@@ -37,6 +37,24 @@ class Road:
         """Draw professional highway with lane markings."""
         # Draw asphalt background
         surface.fill((40, 40, 45))  # Dark asphalt color
+
+        # Draw subtle lane background shading for depth
+        for lane_idx in range(self.num_lanes):
+            lane_top = lane_idx * self.lane_height
+            lane_rect = pygame.Rect(0, lane_top, self.width, self.lane_height)
+            # Alternate slightly different shades
+            color = (45, 45, 50) if lane_idx % 2 == 0 else (40, 40, 45)
+            pygame.draw.rect(surface, color, lane_rect)
+            
+            # Draw lane center guidance line (slightly darker)
+            center_y = self.get_lane_center_y(lane_idx)
+            pygame.draw.line(
+                surface,
+                (60, 60, 65),
+                (0, center_y),
+                (self.width, center_y),
+                1
+            )
         
         # Draw lane dividers (dashed yellow lines)
         for lane_idx in range(self.num_lanes - 1):
@@ -67,24 +85,6 @@ class Road:
             (self.width, self.height - 1),
             config.LINE_WIDTH + 1
         )
-        
-        # Draw subtle lane background shading for depth
-        for lane_idx in range(self.num_lanes):
-            lane_top = lane_idx * self.lane_height
-            lane_rect = pygame.Rect(0, lane_top, self.width, self.lane_height)
-            # Alternate slightly different shades
-            color = (45, 45, 50) if lane_idx % 2 == 0 else (40, 40, 45)
-            pygame.draw.rect(surface, color, lane_rect)
-            
-            # Draw lane center guidance line (slightly darker)
-            center_y = self.get_lane_center_y(lane_idx)
-            pygame.draw.line(
-                surface,
-                (60, 60, 65),
-                (0, center_y),
-                (self.width, center_y),
-                1
-            )
     
     def _draw_dashed_line(self, surface, color, start_pos, end_pos, width, dash_length=20, gap_length=20, offset=0):
         """Draw a dashed line with animation offset."""

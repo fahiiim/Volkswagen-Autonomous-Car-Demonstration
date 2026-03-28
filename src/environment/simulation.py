@@ -19,9 +19,10 @@ class Simulation:
         
         # Initialize components
         self.road = Road(screen_width, screen_height, num_lanes)
+        start_y = self.road.get_lane_center_y(config.PLAYER_START_LANE)
         self.player_vehicle = Vehicle(
             config.PLAYER_START_X,
-            config.PLAYER_START_Y,
+            start_y,
             config.PLAYER_CAR_WIDTH,
             config.PLAYER_CAR_HEIGHT,
             config.PLAYER_CAR_COLOR,
@@ -37,7 +38,9 @@ class Simulation:
     
     def reset(self):
         """Reset simulation to initial state."""
-        self.player_vehicle.reset(config.PLAYER_START_X, config.PLAYER_START_Y)
+        start_y = self.road.get_lane_center_y(config.PLAYER_START_LANE)
+        self.player_vehicle.reset(config.PLAYER_START_X, start_y)
+        self.player_vehicle.speed = config.RULE_BASED_TARGET_SPEED
         self.obstacle_manager.reset()
         self.time_elapsed = 0
         self.collision_occurred = False
@@ -71,7 +74,14 @@ class Simulation:
         
         # Update physics
         self.player_vehicle.update(dt)
-        self.obstacle_manager.update(dt)
+        self.obstacle_manager.update(dt, self.player_vehicle.speed)
+
+        # Camera-like behavior: keep ego X anchored so simulation looks like a highway game.
+        self.player_vehicle.x = config.PLAYER_START_X
+        self.player_vehicle.vx = 0
+        # Do not allow reverse for ego in this demo.
+        if self.player_vehicle.speed < 0:
+            self.player_vehicle.speed = 0
         
         # Check collisions
         if self.obstacle_manager.check_collisions(self.player_vehicle):
@@ -134,23 +144,28 @@ class Simulation:
         }
     
     def get_nearby_obstacles(self, max_distance=config.RULE_BASED_DETECTION_RANGE):
-        """Get obstacles within detection range ahead of the player (forward Y distance)."""
+        """Get obstacles ahead in ego lane corridor (forward X distance)."""
         nearby = []
+        player_x = self.player_vehicle.x
         player_y = self.player_vehicle.y
+        lane_corridor = config.LANE_HEIGHT * 0.35
         
         for obs in self.obstacle_manager.get_all_obstacles():
+            obs_x = obs.x
             obs_y = obs.y
-            # Forward distance: positive = ahead (moving from above), negative = behind
-            forward_distance = player_y - obs_y
+            # Forward distance on highway axis: positive = ahead (to the right)
+            forward_distance = obs_x - player_x
+            lateral_offset = abs(obs_y - player_y)
             
-            # Only detect obstacles ahead
-            if 0 < forward_distance < max_distance:
+            # Detect only obstacles ahead and roughly in our lane corridor
+            if 0 < forward_distance < max_distance and lateral_offset < lane_corridor:
                 nearby.append({
                     'id': id(obs),
                     'x': obs.x,
                     'y': obs.y,
                     'distance': forward_distance,
                     'speed': obs.speed,
+                    'lateral_offset': lateral_offset,
                     'type': 'vehicle' if hasattr(obs, 'lane_id') else 'pedestrian'
                 })
         

@@ -22,16 +22,29 @@ class ObstacleVehicle(Vehicle):
         )
         self.lane_id = lane_id
         self.road = road
-        self.speed = random.uniform(config.OBSTACLE_MIN_SPEED, config.OBSTACLE_MAX_SPEED)
+        # World-frame cruise speed; screen-relative speed is computed against ego speed.
+        self.cruise_speed = random.uniform(config.OBSTACLE_MIN_SPEED, config.OBSTACLE_MAX_SPEED)
+        self.speed = 0
         self.acceleration = 0
         self.lane_change_timer = 0
         self.lane_change_cooldown = 3.0  # seconds before next lane change
         self.target_lane = lane_id
         self.last_update_time = 0
+        self.speed_noise_timer = 0
     
-    def update(self, dt):
-        """Update with lane-following AI."""
+    def update(self, dt, ego_speed):
+        """Update with lane-following AI and ego-relative highway motion."""
         self.last_update_time = dt
+        self.speed_noise_timer += dt
+
+        # Small random cruise speed drift to keep traffic dynamic.
+        if self.speed_noise_timer >= 1.0:
+            self.speed_noise_timer = 0
+            self.cruise_speed += random.uniform(-15, 15)
+            self.cruise_speed = max(config.OBSTACLE_MIN_SPEED, min(config.OBSTACLE_MAX_SPEED, self.cruise_speed))
+
+        # Relative screen speed: negative means obstacle approaches ego from ahead.
+        self.speed = self.cruise_speed - ego_speed
         super().update(dt)
         
         # Lane change logic
@@ -107,8 +120,8 @@ class ObstacleManager:
         self.spawn_timer = 0
         self.spawn_interval = config.OBSTACLE_SPAWN_INTERVAL
     
-    def update(self, dt):
-        """Spawn obstacles and update them."""
+    def update(self, dt, ego_speed):
+        """Spawn obstacles and update them using ego-relative speed."""
         # Spawn new obstacles
         self.spawn_timer += dt
         if self.spawn_timer >= self.spawn_interval:
@@ -117,24 +130,24 @@ class ObstacleManager:
         
         # Update all obstacles
         for obstacle in self.vehicles:
-            obstacle.update(dt)
+            obstacle.update(dt, ego_speed)
         
         for pedestrian in self.pedestrians:
             pedestrian.update(dt)
         
         # Despawn off-screen obstacles (prevent memory leaks)
-        # Vehicles: despawn when completely off-screen vertically
-        self.vehicles = [v for v in self.vehicles if v.is_alive and -200 < v.y < config.SCREEN_HEIGHT + 200]
+        # Vehicles: despawn when completely off-screen in X
+        self.vehicles = [v for v in self.vehicles if v.is_alive and -200 < v.x < config.SCREEN_WIDTH + 200]
         # Pedestrians: despawn when off-screen
         self.pedestrians = [p for p in self.pedestrians if p.is_alive and -100 < p.x < config.SCREEN_WIDTH + 100 and -100 < p.y < config.SCREEN_HEIGHT + 100]
     
     def _try_spawn_obstacle(self):
-        """Attempt to spawn a new obstacle off-screen at the top."""
+        """Attempt to spawn a new obstacle ahead of ego (off-screen right)."""
         if random.random() < config.OBSTACLE_SPAWN_CHANCE and len(self.vehicles) < config.MAX_OBSTACLES:
             lane_id = random.randint(0, self.road.num_lanes - 1)
-            # Spawn off-screen at the top, moving down-screen
-            x = random.uniform(50, config.SCREEN_WIDTH - 50)
-            y = -config.OBSTACLE_CAR_HEIGHT - 10  # Just off the top
+            # Spawn ahead in right side with lane-aligned Y
+            x = config.SCREEN_WIDTH + random.uniform(30, 180)
+            y = self.road.get_lane_center_y(lane_id)
             
             vehicle = ObstacleVehicle(x, y, lane_id, self.road)
             self.vehicles.append(vehicle)

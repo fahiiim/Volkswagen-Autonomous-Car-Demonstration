@@ -108,7 +108,7 @@ def main():
         simulation.render(screen)
         
         # Draw professional UI overlay
-        _draw_professional_ui(screen, simulation, agent, clock, show_debug, manual_control)
+        _draw_professional_ui(screen, simulation, agent, clock, show_debug, manual_control, debug_overlay)
         
         pygame.display.flip()
     
@@ -150,10 +150,10 @@ def _handle_manual_input(simulation):
     return acceleration, steering
 
 
-def _draw_professional_ui(screen, simulation, agent, clock, show_debug, manual_control):
+def _draw_professional_ui(screen, simulation, agent, clock, show_debug, manual_control, debug_overlay):
     """Draw professional UI overlay with status information."""
     font_small = pygame.font.Font(None, 11)
-    font_medium = pygame.font.Font(None, 13)
+    
     
     # Top status bar background
     status_bar_rect = pygame.Rect(0, 0, config.SCREEN_WIDTH, 60)
@@ -171,7 +171,7 @@ def _draw_professional_ui(screen, simulation, agent, clock, show_debug, manual_c
     lane_surf = font_small.render(lane_info, True, (255, 255, 255))
     screen.blit(lane_surf, (10, 25))
     
-    obstacles_info = f"Obstacles: {len(simulation.obstacle_manager.get_all_obstacles())} | Collision: {'✗ ALERT' if simulation.collision_occurred else '✓ Safe'}"
+    obstacles_info = f"Obstacles: {len(simulation.obstacle_manager.get_all_obstacles())} | Collision: {'ALERT' if simulation.collision_occurred else 'SAFE'}"
     obs_color = (255, 100, 100) if simulation.collision_occurred else (100, 255, 100)
     obs_surf = font_small.render(obstacles_info, True, obs_color)
     screen.blit(obs_surf, (10, 42))
@@ -188,7 +188,6 @@ def _draw_professional_ui(screen, simulation, agent, clock, show_debug, manual_c
     
     # Debug overlay (if enabled)
     if show_debug:
-        debug_overlay = DebugOverlay(font_size=11)
         debug_overlay.render_agent_state(screen, agent, simulation, x=config.SCREEN_WIDTH - 320, y=70)
         debug_overlay.render_nearest_obstacle(screen, simulation, x=config.SCREEN_WIDTH - 320, y=200)
 

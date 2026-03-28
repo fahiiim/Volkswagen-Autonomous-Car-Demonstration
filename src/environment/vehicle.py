@@ -36,19 +36,19 @@ class Vehicle:
         self.speed += self.acceleration * dt
         self.speed = max(-self.max_speed, min(self.max_speed, self.speed))
         
-        # Calculate velocity components based on angle
-        # Angle 0° = straight up (negative Y), 90° = right, -90° = left
+        # Highway kinematics:
+        # - Longitudinal motion on X axis via speed
+        # - Steering angle controls lateral drift on Y axis
         angle_rad = math.radians(self.angle)
-        self.vx = self.speed * math.sin(angle_rad)
-        self.vy = -self.speed * math.cos(angle_rad)  # Negative because Y increases downward
+        self.vx = self.speed
+        self.vy = self.speed * math.sin(angle_rad)
         
         # Update position
         self.x += self.vx * dt
         self.y += self.vy * dt
         
-        # Boundary clamping (no wrapping to prevent collision bugs)
-        # Keep vehicles on screen X; off-screen vehicles are despawned
-        self.x = max(0, min(config.SCREEN_WIDTH, self.x))
+        # Keep Y on the road bounds. X can go off-screen for despawn logic.
+        self.y = max(0, min(config.SCREEN_HEIGHT, self.y))
         # Mark for despawn if too far off-screen vertically
         if self.y < -100 or self.y > config.SCREEN_HEIGHT + 100:
             self.is_alive = False
@@ -82,29 +82,65 @@ class Vehicle:
         return self.get_rect().colliderect(other.get_rect())
     
     def draw(self, surface):
-        """Draw vehicle with direction indicator and professional styling."""
+        """Draw vehicle as a car silhouette (not a block)."""
         if not self.is_alive:
             return
-        
-        rect = self.get_rect()
-        
-        # Draw main vehicle body
-        pygame.draw.rect(surface, self.color, rect)
-        
-        # Draw vehicle border for better visibility
-        pygame.draw.rect(surface, (200, 200, 200), rect, 1)
-        
-        # Draw direction indicator (small triangle/line pointing forward)
-        angle_rad = math.radians(self.angle)
-        front_x = self.x + (self.height / 2.5) * math.sin(angle_rad)
-        front_y = self.y - (self.height / 2.5) * math.cos(angle_rad)
-        
-        pygame.draw.line(surface, (255, 255, 255), (self.x, self.y), (front_x, front_y), 2)
-        
-        # Draw speed indicator (filled circle brightness represents speed)
-        speed_brightness = int((abs(self.speed) / self.max_speed) * 255)
-        indicator_color = (min(255, speed_brightness), max(0, 100 - speed_brightness // 2), 100)
-        pygame.draw.circle(surface, indicator_color, (int(self.x), int(self.y)), 3)
+
+        cx = self.x
+        cy = self.y
+        half_w = self.width / 2
+        half_h = self.height / 2
+        heading = math.radians(self.angle)
+
+        def rot(px, py):
+            """Rotate local point around car center by heading angle."""
+            rx = px * math.cos(heading) - py * math.sin(heading)
+            ry = px * math.sin(heading) + py * math.cos(heading)
+            return (cx + rx, cy + ry)
+
+        # Main body polygon (car-like tapered front)
+        body = [
+            rot(-half_w, -half_h * 0.8),
+            rot(half_w * 0.5, -half_h * 0.8),
+            rot(half_w, 0),
+            rot(half_w * 0.5, half_h * 0.8),
+            rot(-half_w, half_h * 0.8),
+        ]
+        pygame.draw.polygon(surface, self.color, body)
+        pygame.draw.polygon(surface, (220, 220, 220), body, 1)
+
+        # Windshield and rear window
+        windshield = [
+            rot(half_w * 0.05, -half_h * 0.45),
+            rot(half_w * 0.55, -half_h * 0.30),
+            rot(half_w * 0.55, half_h * 0.30),
+            rot(half_w * 0.05, half_h * 0.45),
+        ]
+        rear_window = [
+            rot(-half_w * 0.75, -half_h * 0.38),
+            rot(-half_w * 0.25, -half_h * 0.38),
+            rot(-half_w * 0.25, half_h * 0.38),
+            rot(-half_w * 0.75, half_h * 0.38),
+        ]
+        pygame.draw.polygon(surface, (140, 190, 235), windshield)
+        pygame.draw.polygon(surface, (120, 170, 220), rear_window)
+
+        # Wheels
+        wheel_color = (35, 35, 35)
+        wheel_positions = [
+            rot(-half_w * 0.55, -half_h * 0.95),
+            rot(half_w * 0.25, -half_h * 0.95),
+            rot(-half_w * 0.55, half_h * 0.95),
+            rot(half_w * 0.25, half_h * 0.95),
+        ]
+        for wx, wy in wheel_positions:
+            pygame.draw.circle(surface, wheel_color, (int(wx), int(wy)), max(2, int(self.height * 0.08)))
+
+        # Headlights for orientation
+        headlight_l = rot(half_w * 0.95, -half_h * 0.22)
+        headlight_r = rot(half_w * 0.95, half_h * 0.22)
+        pygame.draw.circle(surface, (250, 245, 180), (int(headlight_l[0]), int(headlight_l[1])), 2)
+        pygame.draw.circle(surface, (250, 245, 180), (int(headlight_r[0]), int(headlight_r[1])), 2)
     
     def get_state(self):
         """Return vehicle state as dictionary."""
