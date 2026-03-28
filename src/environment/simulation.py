@@ -60,11 +60,14 @@ class Simulation:
         self.steps += 1
         self.time_elapsed += dt
         
+        # Update road animations
+        self.road.update(dt)
+        
         # Apply action if provided
         if action is not None:
             accel, steering = action
             self.player_vehicle.accelerate(accel)
-            self.player_vehicle.set_steering(steering)
+            self.player_vehicle.set_steering(steering, dt)
         
         # Update physics
         self.player_vehicle.update(dt)
@@ -96,12 +99,12 @@ class Simulation:
         """Compute step reward based on current state."""
         reward = config.REWARD_ALIVE  # Base reward for staying alive
         
-        # Penalty for lane deviation
+        # Penalty for lane deviation (proportional to distance from center)
         target_y = self.road.get_lane_center_y(self.road.get_lane_id(self.player_vehicle.y))
         lane_deviation = abs(target_y - self.player_vehicle.y)
-        reward += config.REWARD_LANE_DEVIATION * lane_deviation
+        reward += config.REWARD_LANE_DEVIATION * lane_deviation  # Negative coefficient = penalty
         
-        # Collision penalty
+        # Collision penalty (large negative)
         if self.collision_occurred:
             reward += config.REWARD_COLLISION
         
@@ -131,20 +134,22 @@ class Simulation:
         }
     
     def get_nearby_obstacles(self, max_distance=config.RULE_BASED_DETECTION_RANGE):
-        """Get obstacles within detection range ahead of the player."""
+        """Get obstacles within detection range ahead of the player (forward Y distance)."""
         nearby = []
         player_y = self.player_vehicle.y
         
         for obs in self.obstacle_manager.get_all_obstacles():
             obs_y = obs.y
-            distance = abs(obs_y - player_y)
+            # Forward distance: positive = ahead (moving from above), negative = behind
+            forward_distance = player_y - obs_y
             
-            if distance < max_distance:
+            # Only detect obstacles ahead
+            if 0 < forward_distance < max_distance:
                 nearby.append({
                     'id': id(obs),
                     'x': obs.x,
                     'y': obs.y,
-                    'distance': distance,
+                    'distance': forward_distance,
                     'speed': obs.speed,
                     'type': 'vehicle' if hasattr(obs, 'lane_id') else 'pedestrian'
                 })

@@ -27,33 +27,34 @@ class ObstacleVehicle(Vehicle):
         self.lane_change_timer = 0
         self.lane_change_cooldown = 3.0  # seconds before next lane change
         self.target_lane = lane_id
+        self.last_update_time = 0
     
     def update(self, dt):
-        """Update with simple lane-following AI."""
+        """Update with lane-following AI."""
+        self.last_update_time = dt
         super().update(dt)
         
         # Lane change logic
         self.lane_change_timer += dt
         if self.lane_change_timer > self.lane_change_cooldown:
             if random.random() < 0.1:  # 10% chance to change lane
-                self.target_lane = random.randint(0, self.road.num_lanes - 1)
-                self.lane_change_timer = 0
+                new_lane = random.randint(0, self.road.num_lanes - 1)
+                if new_lane != self.target_lane:
+                    self.target_lane = new_lane
+                    self.lane_change_timer = 0
         
-        # Steer toward target lane
+        # Smooth, proportional steering toward target lane
         target_y = self.road.get_lane_center_y(self.target_lane)
         lane_error = target_y - self.y
         
-        if abs(lane_error) > config.RULE_BASED_LANE_TOLERANCE:
-            if lane_error > 0:
-                self.steer(5)  # Turn slightly down
-            else:
-                self.steer(-5)  # Turn slightly up
-        else:
-            self.steer(-self.angle * 0.1)  # Straighten out
+        # Proportional control: steer more if farther from lane
+        proportional_gain = 0.15  # Tuned for realistic behavior
+        target_angle = max(-config.STEERING_ANGLE_MAX, min(config.STEERING_ANGLE_MAX, lane_error * proportional_gain))
+        self.set_steering(target_angle, dt)
         
         self.lane_id = self.road.get_lane_id(self.y)
         
-        # Keep on road
+        # Keep roughly on road
         buffer = 50
         if self.y < buffer:
             self.y = buffer
@@ -121,16 +122,19 @@ class ObstacleManager:
         for pedestrian in self.pedestrians:
             pedestrian.update(dt)
         
-        # Despawn off-screen obstacles
-        self.vehicles = [v for v in self.vehicles if v.is_alive and -100 < v.y < config.SCREEN_HEIGHT + 100]
-        self.pedestrians = [p for p in self.pedestrians if p.is_alive and -100 < p.x < config.SCREEN_WIDTH + 100]
+        # Despawn off-screen obstacles (prevent memory leaks)
+        # Vehicles: despawn when completely off-screen vertically
+        self.vehicles = [v for v in self.vehicles if v.is_alive and -200 < v.y < config.SCREEN_HEIGHT + 200]
+        # Pedestrians: despawn when off-screen
+        self.pedestrians = [p for p in self.pedestrians if p.is_alive and -100 < p.x < config.SCREEN_WIDTH + 100 and -100 < p.y < config.SCREEN_HEIGHT + 100]
     
     def _try_spawn_obstacle(self):
-        """Attempt to spawn a new obstacle."""
+        """Attempt to spawn a new obstacle off-screen at the top."""
         if random.random() < config.OBSTACLE_SPAWN_CHANCE and len(self.vehicles) < config.MAX_OBSTACLES:
             lane_id = random.randint(0, self.road.num_lanes - 1)
-            x = config.SCREEN_WIDTH / 2
-            y = self.road.get_lane_center_y(lane_id)
+            # Spawn off-screen at the top, moving down-screen
+            x = random.uniform(50, config.SCREEN_WIDTH - 50)
+            y = -config.OBSTACLE_CAR_HEIGHT - 10  # Just off the top
             
             vehicle = ObstacleVehicle(x, y, lane_id, self.road)
             self.vehicles.append(vehicle)

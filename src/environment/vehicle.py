@@ -37,6 +37,7 @@ class Vehicle:
         self.speed = max(-self.max_speed, min(self.max_speed, self.speed))
         
         # Calculate velocity components based on angle
+        # Angle 0° = straight up (negative Y), 90° = right, -90° = left
         angle_rad = math.radians(self.angle)
         self.vx = self.speed * math.sin(angle_rad)
         self.vy = -self.speed * math.cos(angle_rad)  # Negative because Y increases downward
@@ -45,23 +46,27 @@ class Vehicle:
         self.x += self.vx * dt
         self.y += self.vy * dt
         
-        # Wrap around screen horizontally
-        if self.x < -self.width:
-            self.x = config.SCREEN_WIDTH
-        elif self.x > config.SCREEN_WIDTH:
-            self.x = -self.width
+        # Boundary clamping (no wrapping to prevent collision bugs)
+        # Keep vehicles on screen X; off-screen vehicles are despawned
+        self.x = max(0, min(config.SCREEN_WIDTH, self.x))
+        # Mark for despawn if too far off-screen vertically
+        if self.y < -100 or self.y > config.SCREEN_HEIGHT + 100:
+            self.is_alive = False
     
     def accelerate(self, amount):
         """Set acceleration (positive or negative)."""
         self.acceleration = amount
     
-    def set_steering(self, angle):
-        """Set steering angle."""
-        self.angle = max(-config.STEERING_ANGLE_MAX, min(config.STEERING_ANGLE_MAX, angle))
+    def set_steering(self, angle, dt=0.016):
+        """Set steering angle with smooth rate limiting (~300°/sec)."""
+        # Limit steering rate to realistic vehicle dynamics
+        max_change = config.TURNING_SPEED * dt
+        target = max(self.angle - max_change, min(self.angle + max_change, angle))
+        self.angle = max(-config.STEERING_ANGLE_MAX, min(config.STEERING_ANGLE_MAX, target))
     
-    def steer(self, delta_angle):
-        """Adjust steering angle."""
-        self.set_steering(self.angle + delta_angle)
+    def steer(self, delta_angle, dt=0.016):
+        """Adjust steering angle with rate limiting."""
+        self.set_steering(self.angle + delta_angle, dt)
     
     def get_rect(self):
         """Get bounding box for collision detection."""
@@ -77,18 +82,29 @@ class Vehicle:
         return self.get_rect().colliderect(other.get_rect())
     
     def draw(self, surface):
-        """Draw vehicle as a rectangle."""
+        """Draw vehicle with direction indicator and professional styling."""
         if not self.is_alive:
             return
         
         rect = self.get_rect()
+        
+        # Draw main vehicle body
         pygame.draw.rect(surface, self.color, rect)
         
-        # Draw direction indicator (small line pointing forward)
+        # Draw vehicle border for better visibility
+        pygame.draw.rect(surface, (200, 200, 200), rect, 1)
+        
+        # Draw direction indicator (small triangle/line pointing forward)
         angle_rad = math.radians(self.angle)
-        front_x = self.x + (self.height / 2) * math.sin(angle_rad)
-        front_y = self.y - (self.height / 2) * math.cos(angle_rad)
+        front_x = self.x + (self.height / 2.5) * math.sin(angle_rad)
+        front_y = self.y - (self.height / 2.5) * math.cos(angle_rad)
+        
         pygame.draw.line(surface, (255, 255, 255), (self.x, self.y), (front_x, front_y), 2)
+        
+        # Draw speed indicator (filled circle brightness represents speed)
+        speed_brightness = int((abs(self.speed) / self.max_speed) * 255)
+        indicator_color = (min(255, speed_brightness), max(0, 100 - speed_brightness // 2), 100)
+        pygame.draw.circle(surface, indicator_color, (int(self.x), int(self.y)), 3)
     
     def get_state(self):
         """Return vehicle state as dictionary."""

@@ -24,6 +24,8 @@ class RuleBasedAgent:
             (acceleration, steering_angle) tuple
         """
         state = self.sensors.extract_state()
+        
+        # Reset controls each decision cycle
         acceleration = 0
         steering_angle = 0
         
@@ -31,14 +33,14 @@ class RuleBasedAgent:
         obstacles = self.sensors.get_obstacles_ahead()
         lane_deviation = self.sensors.get_lane_deviation()
         
-        # Rule 1: Handle obstacles
+        # Rule 1: Handle obstacles (safety-critical)
         if obstacles:
             closest = obstacles[0]
             distance = closest['distance']
             
-            # Critical range - must react
+            # CRITICAL: Collision imminent - emergency maneuver
             if distance < config.RULE_BASED_CRITICAL_DISTANCE:
-                # Try to change lane if available
+                # Try to change lane to avoid collision
                 current_lane = self.sensors.get_current_lane()
                 neighbor_lanes = []
                 
@@ -47,39 +49,35 @@ class RuleBasedAgent:
                 if current_lane < self.simulation.road.num_lanes - 1:
                     neighbor_lanes.append(current_lane + 1)
                 
-                # Check if we can safely change lane
+                # Emergency lane change
                 if neighbor_lanes:
-                    # Simple heuristic: change to first available lane
-                    target_lane = neighbor_lanes[0]
+                    target_lane = neighbor_lanes[0]  # Try first available lane
                     target_y = self.simulation.road.get_lane_center_y(target_lane)
                     lane_error = target_y - self.simulation.player_vehicle.y
-                    
-                    if lane_error > 0:
-                        steering_angle = config.STEERING_ANGLE_MAX * 0.7
-                    else:
-                        steering_angle = -config.STEERING_ANGLE_MAX * 0.7
+                    steering_angle = max(-config.STEERING_ANGLE_MAX, min(config.STEERING_ANGLE_MAX, lane_error * 0.2))
                 
                 # Emergency braking
                 acceleration = -config.BRAKING_DECELERATION
             
-            # Safe but uncomfortable distance - reduce speed
+            # WARNING: Too close - defensive driving
             elif distance < config.RULE_BASED_SAFE_DISTANCE:
-                acceleration = -config.BRAKING_DECELERATION * 0.5  # Gentle braking
+                acceleration = -config.BRAKING_DECELERATION * 0.6  # Gentle braking
         
-        # Rule 2: Lane keeping
+        # Rule 2: Lane keeping (continuous control)
         if abs(lane_deviation) > config.RULE_BASED_LANE_TOLERANCE:
-            # Proportional steering toward lane center
+            # Proportional steering back to center
             deviation_ratio = lane_deviation / (config.LANE_HEIGHT / 2)
-            steering_angle = -deviation_ratio * config.STEERING_ANGLE_MAX * 0.5
+            steering_angle = -deviation_ratio * config.STEERING_ANGLE_MAX * 0.4
         
-        # Rule 3: Speed maintenance
-        current_speed = self.simulation.player_vehicle.speed
-        if current_speed < config.RULE_BASED_TARGET_SPEED and acceleration == 0:
-            acceleration = config.ACCELERATION
-        elif current_speed > config.RULE_BASED_TARGET_SPEED + 50:
-            acceleration = -config.BRAKING_DECELERATION * 0.3
+        # Rule 3: Speed maintenance (if no immediate threats)
+        if acceleration == 0:  # No obstacle avoidance happening
+            current_speed = self.simulation.player_vehicle.speed
+            if current_speed < config.RULE_BASED_TARGET_SPEED:
+                acceleration = config.ACCELERATION
+            elif current_speed > config.RULE_BASED_TARGET_SPEED + 50:
+                acceleration = -config.BRAKING_DECELERATION * 0.3
         
-        # Clamp steering
+        # Clamp outputs
         steering_angle = max(-config.STEERING_ANGLE_MAX, min(config.STEERING_ANGLE_MAX, steering_angle))
         
         return acceleration, steering_angle
