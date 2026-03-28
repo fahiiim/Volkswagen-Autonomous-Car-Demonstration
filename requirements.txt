@@ -1,0 +1,6 @@
+pygame>=2.1.0
+opencv-python>=4.6.0
+numpy>=1.21.0
+neurogebra==2.5.3
+torch>=2.0.0
+gymnasium>=0.28.0
