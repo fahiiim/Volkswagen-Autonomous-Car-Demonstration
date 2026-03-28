@@ -24,6 +24,7 @@
 
 This project demonstrates state-of-the-art approaches in autonomous vehicle control, computer vision integration, and AI-driven decision-making.
 
+![alt text](image.png)
 ---
 
 ## 🎯 Features
